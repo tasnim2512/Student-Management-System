@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://cdn.tailwindcss.com?plugins=forms,typography,aspect-ratio,line-clamp"></script>
+  <title>User</title>
+</head>
+<body class="flex justify-center items-center py-20 bg-blue-500 min-h-screen">
+  <div class="shadow-md p-10 bg-yellow-50 w-4/12">
+    <ul>
+      <h1 class="font-semibold pb-4">Student's list:</h1>
+      {{range .Students}}
+        <li class="w-full flex justify-between border-b border-gray-300 pb-2">
+          <p class="w-8/12">{{.Name}}</p> <a class="w-2/12 text-blue-600" href="/students/{{.ID}}/edit">Edit</a> <a href="/students/{{.ID}}/delete" class="w-2/12 text-blue-600" href="">Delete</a> <a href="/students/{{.ID}}/detail" class="w-2/12 text-blue-600" href="">Show</a> 
+        </li>
+      {{end}}
+    </ul>
+    <div class="flex space-x-6 justify-between pt-4">
+      <a href="/students/create" class="block w-5/12 text-center border border-black rounded-md bg-blue-400 py-1 mt-4">
+        Create Student
+      </a>
+      <a href="/logout" class="w-block text-center w-5/12 border border-black rounded-md bg-blue-400 py-1 mt-4">
+        Logout
+      </a>
+    </div>
+ 
+  </div>
+</body>
+</html>

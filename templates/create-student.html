@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://cdn.tailwindcss.com?plugins=forms,typography,aspect-ratio,line-clamp"></script>
+  <title>User</title>
+</head>
+<body class="flex justify-center items-center py-20 bg-blue-500 min-h-screen">
+  <form class="shadow-md p-10 bg-blue-200" action="/students/store" method="post">
+    <p class="text-sm text-gray-600 pb-4">Please enter Student details</p>
+    <div class="py-2">   
+      <label class="w-full" for="name">Name: </label>
+      <input class="border border-gray-400 rounded-md w-full" type="text" name="Name" value="{{.Name}}">
+      {{with ( index .FormError "Name") }}
+      <p class="text-red-500 ">{{.}}</p>
+      {{end}}
+    </div>
+    <div class="py-2">
+      <label class="w-full" for="name">Roll: </label>
+      <input class="border border-gray-400 rounded-md w-full" type="text" name="Roll" value="{{.Roll}}">
+      {{with ( index .FormError "Roll") }}
+      <p class="text-red-500 ">{{.}}</p>
+      {{end}}
+    </div>
+    <div class="py-2">
+      <label class="w-full" for="name">Email: </label>
+      <input class="border border-gray-400 rounded-md w-full" type="email" name="Email" value="{{.Email}}">
+      {{with ( index .FormError "Email") }}
+      <p class="text-red-500 ">{{.}}</p>
+      {{end}}
+    </div>
+  
+    <button class="w-3/12 border border-black rounded-md bg-blue-400 py-1 mt-4" type="submit">
+      Submit
+    </button>
+  </form>
+</body>
+</html>

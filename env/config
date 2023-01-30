@@ -1,0 +1,7 @@
+[server]
+  port=4010
+
+
+[session]
+  lifetime = 1
+  idletime= 20
