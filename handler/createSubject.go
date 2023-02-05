@@ -1,67 +1,64 @@
 package handler
 
 import (
-	"fmt"
 	"log"
 	"net/http"
 	"practice/json-golang/storage"
 	"strconv"
 	"strings"
 
-	validation "github.com/go-ozzo/ozzo-validation/v4"
 	"github.com/justinas/nosurf"
+
+	validation "github.com/go-ozzo/ozzo-validation/v4"
 )
 
-type StudentForm struct {
-	ListOfClasses []storage.Class
-	Student       storage.Student
-	FormError     map[string]error
-	CSRFToken     string
+type SubjectForm struct {
+	ListOfClasses    []storage.Class
+	Subject          storage.Subject
+	SubjectFormError map[string]error
+	CSRFToken        string
+	ClassID          string
 }
 
-func (h Handler) CreateStudent(w http.ResponseWriter, r *http.Request) {
+func (h Handler) CreateSubject(w http.ResponseWriter, r *http.Request) {
 	classList, err := h.storage.GetClasses()
 	if err != nil {
 		log.Println(err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 	}
-	h.parseCreateTemplate(w, StudentForm{
+	h.parseCreateSubjectTemplate(w, SubjectForm{
 		ListOfClasses: classList,
 		CSRFToken:     nosurf.Token(r),
 	})
 
 }
 
-func (h Handler) StoreStudent(w http.ResponseWriter, r *http.Request) {
+func (h Handler) StoreSubject(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		log.Println(err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 	}
-	form := StudentForm{}
-	student := storage.Student{}
+	form := SubjectForm{}
+	subject := storage.Subject{}
 
-	err := h.decoder.Decode(&student, r.PostForm)
+	err := h.decoder.Decode(&subject, r.PostForm)
 	if err != nil {
 		log.Println(err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 	}
+	form.Subject = subject
 
-	form.Student = student
-	if err := student.Validate(); err != nil {
+	if err := subject.Validate(); err != nil {
 		formErr := make(map[string]error)
 		if vErr, ok := err.(validation.Errors); ok {
 			for key, val := range vErr {
 				formErr[strings.Title(key)] = val
 			}
 		}
-		form.FormError = formErr
+		form.SubjectFormError = formErr
 		form.CSRFToken = nosurf.Token(r)
-		h.parseCreateTemplate(w, form)
+		h.parseCreateSubjectTemplate(w, form)
 		return
-	}
-	if err != nil {
-		log.Println(err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
 	}
 
 	cl := r.FormValue("ClassID")
@@ -70,24 +67,22 @@ func (h Handler) StoreStudent(w http.ResponseWriter, r *http.Request) {
 		log.Println(err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 	}
-	student.ClassID = classid
-
-	newStudent, err := h.storage.CreateStudent(student)
+	subject.ClassID = classid
+	_, err = h.storage.CreateSubject(subject)
 	if err != nil {
 		log.Println(err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 	}
 
-	http.Redirect(w, r, fmt.Sprintf("/admin/%v/edit/student", newStudent.ID), http.StatusSeeOther)
+	http.Redirect(w, r, "/admin/create/subject", http.StatusSeeOther)
 }
 
-func (h Handler) parseCreateTemplate(w http.ResponseWriter, data any) {
-	t := h.Templates.Lookup("create-student.html")
+func (h Handler) parseCreateSubjectTemplate(w http.ResponseWriter, data any) {
+	t := h.Templates.Lookup("create-subject.html")
 	if t == nil {
-		log.Println("unable to lookup create student template")
+		log.Println("unable to lookup create subject template")
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 	}
-
 	if err := t.Execute(w, data); err != nil {
 		log.Println(err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)

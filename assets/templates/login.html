@@ -7,8 +7,9 @@
   <script src="https://cdn.tailwindcss.com?plugins=forms,typography,aspect-ratio,line-clamp"></script>
   <title>User</title>
 </head>
-<body class="flex justify-center items-center py-20 bg-blue-500 min-h-screen">
+<body class="flex justify-center items-center py-20 bg-blue-300 min-h-screen">
   <form class="shadow-md p-10 bg-blue-200" action="/login" method="Post">
+    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
     <p class="text-sm text-gray-600 pb-4">Please login here:</p>
     <div class="py-2">   
       <label class="w-full" for="name">User Name: </label>

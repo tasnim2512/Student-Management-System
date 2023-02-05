@@ -1,106 +1,79 @@
 package handler
 
 import (
-	"encoding/json"
-	"errors"
-	"io"
-	"io/ioutil"
 	"log"
+	"math"
 	"net/http"
-	"os"
-	"text/template"
-
-	validation "github.com/go-ozzo/ozzo-validation"
-	is "github.com/go-ozzo/ozzo-validation/v4/is"
+	"practice/json-golang/storage"
+	"strconv"
 )
 
-type StudentList struct {
-	Students []Student `json:"students"`
-}
-type Student struct {
-	ID        int              `json:"id" form:"-"`
-	Name      string           `json:"Name"`
-	Roll      int64            `json:"Roll"`
-	Email     string           `json:"Email"`
-	Hobbies   []string         `json:"Hobbies"`
-	FormError map[string]error `json:"-"`
-}
+const ListLimit = 2
 
-func (s Student) Validate() error {
-	return validation.ValidateStruct(&s,
-		validation.Field(&s.Name,
-			validation.Required.Error("the name field is required"),
-			validation.Length(3, 32).Error("the name length should be between 3 to 32"),
-			validation.By(CheckAlreadyExists),
-		),
-		validation.Field(&s.Email,
-			validation.Required.Error("the email field is required"),
-			is.Email.Error("Please put a Valid email"),
-		),
-		validation.Field(&s.Roll,
-			validation.Required.Error("the roll field is required"),
-		),
-	)
-}
-func (h Handler) STUDENT(w http.ResponseWriter, r *http.Request) {
-	ul, err := getUserList()
-	if err != nil {
-		log.Fatalf("%v", err)
-	}
-
-	t, _ := template.ParseFiles("templates/student-list.html")
-	if err := t.Execute(w, ul); err != nil {
-		log.Fatalf("%v", err)
-	}
-}
-func getUserList() (*StudentList, error) {
-	studentFile, err := os.Open("students.json")
-	if err != nil {
-		return nil, err
-	}
-
-	defer studentFile.Close()
-
-	ul := StudentList{}
-	content, err := io.ReadAll(studentFile)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := json.Unmarshal(content, &ul); err != nil {
-		return nil, err
-	}
-
-	return &ul, err
+type studentList struct {
+	Students   []storage.Student
+	SearchTerm string
+	Limit      int
+	PageNumber int
+	Total      int
+	TotalPage  int
 }
 
-func writeUsersToFile(ul *StudentList) error {
-	file, err := json.MarshalIndent(ul, "", " ")
-	if err != nil {
-		return err
+func (h Handler) ListOfStudent(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		log.Println(err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
 	}
 
-	err = ioutil.WriteFile("students.json", file, 0644)
-	if err != nil {
-		return err
-	}
-	return err
-}
-
-func CheckAlreadyExists(value any) error {
-	name, ok := value.(string)
-	if !ok {
-		return errors.New("The name should be string")
-	}
-	ul, err := getUserList()
-	if err != nil {
-		log.Print(err)
-		return err
-	}
-	for _, student := range ul.Students {
-		if student.Name == name {
-			return errors.New("the name is already exits")
+	var err error
+	pageNumber := 1
+	pn := r.FormValue("page")
+	if pn != "" {
+		pageNumber, _ = strconv.Atoi(pn)
+		if err != nil {
+			pageNumber = 1
 		}
 	}
-	return nil
+
+	offset := 0
+	if pageNumber > 1 {
+		offset = (pageNumber * ListLimit) - ListLimit
+	}
+
+	st := r.FormValue("SearchTerm")
+	uf := storage.StudentFilter{
+		SearchTerm: st,
+		Offset:     offset,
+		Limit:      ListLimit,
+	}
+	listStudent, err := h.storage.ListOfStudent(uf)
+	if err != nil {
+		log.Println(err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+	}
+	t := h.Templates.Lookup("student-list.html")
+	if t == nil {
+		log.Println("unable to lookup template")
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+	}
+
+	total := 0
+	if len(listStudent) > 0 {
+		total = listStudent[0].Total
+	}
+	totalPage := int(math.Ceil(float64(total) / float64(ListLimit)))
+
+	data := studentList{
+		Students:   listStudent,
+		SearchTerm: st,
+		Limit:      ListLimit,
+		PageNumber: pageNumber,
+		Total:      total,
+		TotalPage:  totalPage,
+	}
+
+	if err := t.Execute(w, data); err != nil {
+		log.Println(err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+	}
 }

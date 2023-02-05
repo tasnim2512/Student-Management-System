@@ -1,71 +1,94 @@
 package handler
 
 import (
+	"fmt"
 	"log"
 	"net/http"
+	"practice/json-golang/storage"
 	"strconv"
-	"text/template"
+	"strings"
 
 	"github.com/go-chi/chi"
-	validation "github.com/go-ozzo/ozzo-validation"
+	validation "github.com/go-ozzo/ozzo-validation/v4"
+	"github.com/justinas/nosurf"
 )
 
 func (h Handler) EditStudent(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	roll, _ := strconv.Atoi(id)
-	ul, err := getUserList()
+
+	classList, err := h.storage.GetClasses()
 	if err != nil {
-		log.Fatalf("%v", err)
-	}
-	
-	var editStudent Student
-	for _, val := range ul.Students {
-		if val.ID == roll {
-			editStudent = val
-			break
-		}
+		log.Println(err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
 	}
 
-	parseEditTemplate(w, editStudent)
+	editStudent, err := h.storage.GetStudentById(id)
+	if err != nil {
+		log.Println(err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+	}
+	form := StudentForm{
+		ListOfClasses: classList,
+	}
+	form.Student = *editStudent
+	form.CSRFToken = nosurf.Token(r)
+	h.parseEditTemplate(w, form)
 }
+
 func (h Handler) UpdateStudent(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	Sid,  _ := strconv.Atoi(id)
+	Sid, _ := strconv.Atoi(id)
 
-	student := Student{}
+	student := storage.Student{
+		ID: Sid,
+	}
+	var form StudentForm
+
 	err := h.decoder.Decode(&student, r.PostForm)
 	if err != nil {
-		log.Fatal(err)
+		log.Println(err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
 	}
+	form.Student = student
 
+	form.CSRFToken = nosurf.Token(r)
 	if err := student.Validate(); err != nil {
+
 		if vErr, ok := err.(validation.Errors); ok {
-			student.FormError = vErr
+			newErr := make(map[string]error)
+			for key, val := range vErr {
+				newErr[strings.Title(key)] = val
+			}
+			form.FormError = newErr
 		}
-		parseEditTemplate(w, student)
+
+		h.parseEditTemplate(w, form)
 		return
 	}
-	ul, err := getUserList()
+
+	updateStudent, err := h.storage.UpdateStudent(student)
+
 	if err != nil {
-		log.Fatalf("%v", err)
+		log.Println(err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
 	}
-	for idx, st := range ul.Students {
-		if st.ID == Sid {
-			ul.Students[idx].Name = student.Name
-			ul.Students[idx].Email = student.Email
-			ul.Students[idx].Roll = student.Roll
-			break
-		}
+
+	if err := h.decoder.Decode(&student, r.PostForm); err != nil {
+		log.Println(err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
 	}
-	if err := writeUsersToFile(ul); err != nil {
-		log.Fatalf("%v", err)
-	}
-	http.Redirect(w, r, "/students", http.StatusSeeOther)
+	http.Redirect(w, r, fmt.Sprintf("/admin/%v/edit/student", updateStudent.ID), http.StatusSeeOther)
 }
 
-func parseEditTemplate(w http.ResponseWriter, data any) {
-	t, _ := template.ParseFiles("templates/edit-Student.html")
+func (h Handler) parseEditTemplate(w http.ResponseWriter, data any) {
+	t := h.Templates.Lookup("edit-student.html")
+	if t == nil {
+		log.Println("unable to look up edit student template")
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+	}
+
 	if err := t.Execute(w, data); err != nil {
-		log.Fatalf("%v", err)
+		log.Println(err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
 	}
 }

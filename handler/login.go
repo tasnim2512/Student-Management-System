@@ -1,76 +1,108 @@
 package handler
 
 import (
+	"fmt"
 	"log"
 	"net/http"
-	"text/template"
+	"practice/json-golang/storage/postgres"
+	"strconv"
+	"strings"
+
+	validation "github.com/go-ozzo/ozzo-validation/v4"
+	"github.com/justinas/nosurf"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
-type LoginFormError struct {
-	UserName string
-	Password string
-}
-type LoginStudent struct {
+type LoginAdmin struct {
 	UserName  string
 	Password  string
-	FormError LoginFormError
+	FormError map[string]error
+	CSRFToken string
 }
 
 func (h Handler) Login(w http.ResponseWriter, r *http.Request) {
-	parseLoginTemplate(w, LoginStudent{})
+	h.parseLoginTemplate(w, LoginAdmin{
+		CSRFToken: nosurf.Token(r),
+	})
+}
+
+func (ls LoginAdmin) Validate() error {
+	return validation.ValidateStruct(&ls,
+		validation.Field(&ls.UserName,
+			validation.Required.Error("the username field is required"),
+		),
+		validation.Field(&ls.Password,
+			validation.Required.Error("the password field is required"),
+		),
+	)
 }
 
 func (h Handler) LoginPostHandler(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		log.Fatalf("%v", err)
+		log.Println(err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
 	}
-	un := r.PostFormValue("UserName")
-	pass := r.PostFormValue("Password")
 
-	if un == "" {
-		parseLoginTemplate(w, LoginStudent{
-			UserName: un,
-			Password: "",
-			FormError: LoginFormError{
-				UserName: "The username field is required",
-			},
-		})
+	var lf LoginAdmin
+	if err := h.decoder.Decode(&lf, r.PostForm); err != nil {
+		log.Println(err)
+		http.Error(w, "Internal server Error", http.StatusInternalServerError)
+	}
+
+	if err := lf.Validate(); err != nil {
+		formErr := make(map[string]error)
+		if vErr, ok := err.(validation.Errors); ok {
+			for key, val := range vErr {
+				formErr[strings.Title(key)] = val
+			}
+		}
+		lf.FormError = formErr
+		lf.Password = ""
+		lf.CSRFToken = nosurf.Token(r)
+		h.parseLoginTemplate(w, lf)
 		return
 	}
-	if pass == "" {
-		parseLoginTemplate(w, LoginStudent{
-			UserName: un,
-			FormError: LoginFormError{
-				Password: "The password field is required",
-			},
-		})
+
+	admin, err := h.storage.GetAdminByUsername(lf.UserName)
+	if err != nil {
+		if err.Error() == postgres.NotFound {
+			formErr := make(map[string]error)
+			formErr["UserName"] = fmt.Errorf("credential doesn't match")
+			lf.FormError = formErr
+			lf.Password = ""
+			lf.CSRFToken = nosurf.Token(r)
+			h.parseLoginTemplate(w, lf)
+			return
+		}
+
+		http.Error(w, "Internal server Error", http.StatusInternalServerError)
 		return
 	}
-	if un != "admin" {
-		parseLoginTemplate(w, LoginStudent{
-			UserName: un,
-			FormError: LoginFormError{
-				UserName: "The username/password doesn't match",
-			},
-		})
+
+	if err := bcrypt.CompareHashAndPassword([]byte(admin.Password), []byte(lf.Password)); err != nil {
+		formErr := make(map[string]error)
+		formErr["UserName"] = fmt.Errorf("credential doesn't match")
+		lf.FormError = formErr
+		lf.Password = ""
+		lf.CSRFToken = nosurf.Token(r)
+		h.parseLoginTemplate(w, lf)
 		return
 	}
-	if pass != "12345" {
-		parseLoginTemplate(w, LoginStudent{
-			UserName: un,
-			FormError: LoginFormError{
-				UserName: "The username/password doesn't match",
-			},
-		})
-		return
-	}
-	h.sessionManager.Put(r.Context(), "username", un)
-	http.Redirect(w, r, "/students", http.StatusSeeOther)
+
+	h.sessionManager.Put(r.Context(), "userId", strconv.Itoa(admin.ID))
+	http.Redirect(w, r, "/admin/options", http.StatusSeeOther)
+
 }
 
-func parseLoginTemplate(w http.ResponseWriter, data any) {
-	t, _ := template.ParseFiles("templates/login.html")
+func (h Handler) parseLoginTemplate(w http.ResponseWriter, data any) {
+	t := h.Templates.Lookup("login.html")
+	if t == nil {
+		log.Println("unable to lookup login template")
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+	}
 	if err := t.Execute(w, data); err != nil {
-		log.Fatalf("%v", err)
+		log.Println(err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
 	}
 }
